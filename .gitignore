@@ -1,7 +1,7 @@
-./011320_002_N_HR_dict.pkl
-./_SS12251_140745.geojson
-./_SS12251_140745.svs
-./match_dict.pkl
+011320_002_N_HR_dict.pkl
+_SS12251_140745.geojson
+_SS12251_140745.svs
+match_dict.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
