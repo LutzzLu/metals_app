@@ -3,6 +3,14 @@ _SS12251_140745.geojson
 _SS12251_140745.svs
 match_dict.pkl
 data
+metal_map_data/
+data_with_xlsx/
+final_mask_pre.npy
+im_small_crop_co.npy
+padded_metal_image_rgb_co.npy
+tissue_mask.jpg
+tissue_mask_mask.png
+tissue_mask_test.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

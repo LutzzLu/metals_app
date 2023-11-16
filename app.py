@@ -60,6 +60,7 @@ from skimage.filters import threshold_otsu
 from skimage import morphology as morph
 from scipy.ndimage import label as scilabel
 from scipy.ndimage.morphology import binary_fill_holes as fill_holes
+from skimage import measure
 
 minmax_list = [[7424, 7520], [39520, 62784]]
 
@@ -133,6 +134,7 @@ def warp_metals(slide_x, slide_y, metals_x, metals_y, dfs_new_df_co):
         homo, status = cv2.findHomography(points_src, points_dst)
         warped_metals[element] = cv2.warpPerspective(src = metal_k_im_gray_pad, M = homo, dsize = (w, h))
     return warped_metals
+
 
 # app = JupyterDash(__name__, 
 #                   external_stylesheets=[dbc.themes.SPACELAB], 
@@ -377,14 +379,24 @@ def parse_contents(contents, filename, date):
     return df
 
 def upload_contents(contents, filename, date, project_name):
+    # content_type, content_string = contents.split(',')
+
+    # decoded = base64.b64decode(content_string)
+    # file_path = io.BytesIO(decoded)
+
+    files_to_upload_path = '/Users/luyunrui/Desktop/Dartmouth/metals_app/metals_app_data/'
+
     if '.svs' in filename:
-        image = tiff.imread('/Users/luyunrui/Desktop/'+filename)
-        tiff.imwrite('./data/'+project_name+'/'+filename[:-4]+'.tiff', decoded, photometric='rgb')
+        image = tiff.imread(files_to_upload_path+filename)
+        # image = tiff.imread(file_path)
+        tiff.imwrite('./data/'+project_name+'/'+filename[:-4]+'.tiff', image, photometric='rgb')
     elif '.tiff' in filename:
-        image = tiff.imread('/Users/luyunrui/Desktop/'+filename)
-        tiff.imwrite('./data/'+project_name+'/'+filename[:-5]+'.tiff', decoded, photometric='rgb')
+        image = tiff.imread(files_to_upload_path+filename)
+        # image = tiff.imread(file_path)
+        tiff.imwrite('./data/'+project_name+'/'+filename[:-5]+'.tiff', image, photometric='rgb')
     elif '.pkl' in filename:
-        with open('/Users/luyunrui/Desktop/'+filename, "rb") as file:
+        with open(files_to_upload_path+filename, "rb") as file:
+        # with open(file_path, "rb") as file:
             metal_dict = pickle.load(file)
         with open('./data/'+project_name+'/'+filename[:-4]+'.pkl', 'wb') as handle:
             pickle.dump(metal_dict, handle)
@@ -434,6 +446,9 @@ def output_blank_hne(im_small_crop_annotation_tab):
     return blank_figure_hne
 
 
+temp_folder_list = os.listdir('./data/')
+temp_folder_list.remove('.DS_Store')
+
 upload_data_card = dbc.Card(
     children = [
         dbc.CardHeader(html.H2("Upload data area")),
@@ -460,8 +475,8 @@ upload_data_card = dbc.Card(
                     html.Div("Data folder you want upload to: ", style={'font-weight': 'bold'}),
                     dcc.Dropdown(
                     id='upload_data_folder_dropdown',
-                    options=list(set(list(files_df['Project']))),
-                    value='colon',
+                    options=temp_folder_list,
+                    value=temp_folder_list[0],
                     style={'width': '200px'}, 
                         ),
                     ], justify='start'
@@ -472,7 +487,7 @@ upload_data_card = dbc.Card(
                             id='upload_data_files',
                             children=html.Div([
                             'Drag and Drop or ',
-                            html.A('Select Files')
+                            html.A('Select File')
                             ]),
                             style={
                             'width': '260px',
@@ -490,6 +505,30 @@ upload_data_card = dbc.Card(
         ), 
             ]
         ),
+        dbc.CardFooter([
+            dbc.Row([
+                    html.Div("Upload multiple metals xlsx files and concat to pkl file: ", style={'font-weight': 'bold'}),
+                    dcc.Upload(
+                            id='upload_multiple_xlsx_files',
+                            children=html.Div([
+                            'Drag and Drop or ',
+                            html.A('Select metals xlsx Files')
+                            ]),
+                            style={
+                            'width': '320px',
+                            'height': '60px',
+                            'lineHeight': '60px',
+                            'borderWidth': '1px',
+                            'borderStyle': 'dashed',
+                            'borderRadius': '5px',
+                            'textAlign': 'center',
+                            'margin': '10px'
+                             },
+                            multiple=True,
+                            ),
+                    ], justify='start'
+        ), 
+        ]),
     ]
 )
 
@@ -702,6 +741,7 @@ boxplot_result_content = dbc.Card(
             [
                 dbc.Row([
                 dcc.Graph(id="result_boxplot"),
+                dmc.Switch(id="boxplot_metal_type", label="Metals/Annotations", checked=False),
                 dmc.Switch(id="boxplot_log_scale", label="Log Scale Boxplot", checked=True),
                 dcc.Dropdown(
                                 id='boxplot_dropdown',
@@ -913,7 +953,7 @@ all_preprocess_content = dbc.Container(
                                     ),
                     dcc.Dropdown(
                                 id='metal_dropdown_pre',
-                                options=list(metal_data['metals'].keys()),
+                                options=['All']+list(metal_data['metals'].keys()),
                                 value='Ca44',
                                 searchable=True, 
                                 style={'width': '110px'},
@@ -930,12 +970,12 @@ all_preprocess_content = dbc.Container(
                                     included=False,
                                tooltip={"placement": "bottom", "always_visible": True},
                                 ),
-                    dbc.Button('Generate Mask', id="start_generate_mask_button", style={'width': '200px'}, n_clicks=0),
+                    # dbc.Button('Generate Mask', id="start_generate_mask_button", style={'width': '200px'}, n_clicks=0),
                  ],
                  ),
                 width={'size': 5, 'offset': 0}
             ),
-            dbc.Col(
+            dbc.Col(html.Div(children = [
                 dcc.Graph(
                     id='metal_pre_mask',
                     figure=blank_figure,
@@ -943,7 +983,10 @@ all_preprocess_content = dbc.Container(
                         'displayModeBar': False,
                     }
                 ),
-                width={'size': 5, 'offset': 0}
+                html.Div("Select threshold percentage: it will include all value below this threshold", style={'font-weight': 'bold'}),
+                dcc.Slider(50, 100, 1, id="pre_threshold_input", value=90, marks=None,tooltip={"placement": "bottom", "always_visible": True}),
+                dbc.Button('Generate Mask', id="start_generate_mask_button", style={'width': '200px'}, n_clicks=0),]),
+                width={'size': 5, 'offset': 0},
             ),
     ], justify='between'
         ),
@@ -993,98 +1036,149 @@ app.layout = html.Div([dcc.Markdown(children=markdown_text_title),
 @app.callback(
     Output('metal_pre_mask', 'figure', allow_duplicate=True),
     Input('start_generate_mask_button', 'n_clicks'),
+    State('pre_threshold_input', 'value'),
     prevent_initial_call=True,
 )
-def generate_tissue_mask(n_clicks):
-    def filter_grays(gray_img, tolerance=2, output_type="bool"):
-        gray_img = gray_img.astype(int)
-        diff = np.abs(gray_img - np.mean(gray_img)) <= tolerance
-        result = ~diff
-        if output_type == "bool":
-            pass
-        elif output_type == "float":
-            result = result.astype(float)
-        else:
-            result = result.astype("uint8") * 255
-        return result
-
-    def label_objects(gray_img,
-                    otsu=True,
-                    min_object_size=100000,
-                    threshold=240,
-                    kernel=61,
-                    keep_holes=False,
-                    max_hole_size=0,
-                    gray_before_close=False,
-                    blur_size=0):
-        I = gray_img.copy()
-        gray_mask = filter_grays(I, output_type="bool")
-        if otsu:
-            threshold = threshold_otsu(I)
-        BW = (I < threshold).astype(bool)
-        if gray_before_close:
-            BW = BW & gray_mask
-        if kernel > 0:
-            BW = morph.binary_closing(BW, morph.disk(kernel))
-        if not gray_before_close:
-            BW = BW & gray_mask
-        if blur_size:
-            BW = (cv2.blur(BW.astype(np.uint8), (blur_size, blur_size)) == 1)
-        labels = scilabel(BW)[0]
-        labels = morph.remove_small_objects(labels, min_size=min_object_size, in_place=True)
-        if not keep_holes and max_hole_size:
-            BW = morph.remove_small_objects(labels == 0, min_size=max_hole_size, in_place=True) == False
-        elif keep_holes:
-            BW = labels > 0
-        else:
-            BW = fill_holes(labels)
-        labels = scilabel(BW)[0]
-        return (BW != 0), labels
-
-    def generate_tissue_mask(arr,
-                            compression=8,
-                            otsu=False,
-                            threshold=220,
-                            kernel=61,
-                            min_object_size=100000,
-                            return_convex_hull=False,
-                            keep_holes=False,
-                            max_hole_size=0,
-                            gray_before_close=False,
-                            blur_size=0):
-        img = cv2.resize(arr, None, fx=1/compression, fy=1/compression, interpolation=cv2.INTER_CUBIC)
-        WB, lbl = label_objects(img, otsu=otsu, min_object_size=min_object_size, threshold=threshold, kernel=kernel, keep_holes=keep_holes, max_hole_size=max_hole_size, gray_before_close=gray_before_close, blur_size=blur_size)
-        if return_convex_hull:
-            for i in range(1, lbl.max() + 1):
-                WB = WB + morph.convex_hull_image(lbl == i)
-            WB = WB > 0
-        WB = cv2.resize(WB.astype(np.uint8), arr.shape[:2][::-1], interpolation=cv2.INTER_CUBIC) > 0
-        return WB
+def generate_tissue_mask_func(n_clicks, threshold):
 
     if n_clicks > 0:
-        metal_image = metal_data['metals']['Ca44']
-        metal_image[metal_image <= 0] = 0.000001
-        metal_image = np.nan_to_num(metal_image, nan=0.000001)
-        final_mask = generate_tissue_mask(metal_image, compression = 1, )
+        scale_factor = 0.25
 
-        print('final_shape', final_mask.shape)
+        threshold = int(255*threshold*0.01)
 
-        red_color = np.array([255, 0, 0], dtype=np.uint8)  # Red
-        blue_color = np.array([0, 0, 255], dtype=np.uint8)  # Blue
+        append_count = 0
+        for i_index in list(metal_data['metals'].keys()):
+            i = metal_data['metals'][i_index]
+            if append_count == 0:
+                # i[i <= 0] = 0.000001
+                # i = np.nan_to_num(i, nan=0.000001)
+                all_metals = i
+                continue
+            # i[i <= 0] = 0.000001
+            # i = np.nan_to_num(i, nan=0.000001)
+            all_metals += i
+            append_count += 1
 
-        # Create an empty RGB array with the same shape as the boolean array
-        height, width = final_mask.shape
-        rgb_array = np.zeros((height, width, 3), dtype=np.uint8)
+        # metal_image = metal_data['metals']['Ca44']
+        # all_metals[all_metals <= 0] = 0.000001
+        # all_metals = np.nan_to_num(all_metals, nan=0.000001)
 
-        # Assign red or blue color based on the boolean values
-        rgb_array[final_mask] = blue_color  # Assign blue where True
-        rgb_array[~final_mask] = red_color  # Assign red where False
+        padded_metal_image = all_metals
+        padded_metal_image[padded_metal_image <= 0] = 0.000001
+        padded_metal_image = np.nan_to_num(padded_metal_image, nan=0.000001)
+        padded_metal_image = np.log(padded_metal_image)+10
+        # if vmin and vmax:
+        #     c_norm = Colors_Normalize(vmin=np.percentile(padded_metal_image, vmin), 
+        #                             vmax=np.percentile(padded_metal_image, vmax), clip=True)
+        #     padded_metal_image_normalized = c_norm(padded_metal_image)
+        # else:
+        padded_metal_image_normalized = (padded_metal_image - padded_metal_image.min()) / (padded_metal_image.max() - padded_metal_image.min())
+        cmap_jet = plt.cm.get_cmap('jet')
+        padded_metal_image_rgb = cmap_jet(padded_metal_image_normalized)
+
+
+
+        padded_metal_image_rgb = padded_metal_image_rgb[:, :, :3]
+        target_color_to_white = padded_metal_image_rgb[0, 0, :]
+        replacement_color_to_white = np.array([1, 1, 1])
+        mask_to_white = np.all(padded_metal_image_rgb == target_color_to_white, axis=-1)
+        padded_metal_image_rgb[mask_to_white] = replacement_color_to_white
+
+        padded_metal_image_rgb = padded_metal_image_rgb[:, :, :3]
+        target_color_to_white = padded_metal_image_rgb[-1, 0, :]
+        replacement_color_to_white = np.array([1, 1, 1])
+        mask_to_white = np.all(padded_metal_image_rgb == target_color_to_white, axis=-1)
+        padded_metal_image_rgb[mask_to_white] = replacement_color_to_white
+
+        padded_metal_image_rgb = padded_metal_image_rgb[:, :, :3]
+        target_color_to_white = padded_metal_image_rgb[0, -1, :]
+        replacement_color_to_white = np.array([1, 1, 1])
+        mask_to_white = np.all(padded_metal_image_rgb == target_color_to_white, axis=-1)
+        padded_metal_image_rgb[mask_to_white] = replacement_color_to_white
+
+        padded_metal_image_rgb = padded_metal_image_rgb[:, :, :3]
+        target_color_to_white = padded_metal_image_rgb[-1, -1, :]
+        replacement_color_to_white = np.array([1, 1, 1])
+        mask_to_white = np.all(padded_metal_image_rgb == target_color_to_white, axis=-1)
+        padded_metal_image_rgb[mask_to_white] = replacement_color_to_white
+
+        cv2.imwrite('preprocess_test.jpg', (padded_metal_image_rgb*255).astype(int))
+        padded_metal_image_rgb = cv2.imread('preprocess_test.jpg')
+
+        final_mask=generate_tissue_mask(padded_metal_image_rgb,compression=1,threshold=threshold,kernel=10,gray_before_close=True, keep_holes = False)
+
+        # final_mask = generate_tissue_mask(all_metals, compression = 0.5, keep_holes = False, )
+
+        # print('final_shape', final_mask.shape)
+
+        # red_color = np.array([255, 0, 0], dtype=np.uint8)  # Red
+        # blue_color = np.array([0, 0, 255], dtype=np.uint8)  # Blue
+
+        # # Create an empty RGB array with the same shape as the boolean array
+        # height, width = final_mask.shape
+        # rgb_array = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # # Assign red or blue color based on the boolean values
+        # rgb_array[final_mask] = blue_color  # Assign blue where True
+        # rgb_array[~final_mask] = red_color  # Assign red where False
+
+        contours = measure.find_contours(final_mask, 0.5)
+
+        # def polygon_to_path(polygon, 
+        #                     y_median,
+        #                 ):
+        #     coordinates = polygon.replace("POLYGON ((", "").replace("))", "").split(", ")
+        #     path_points = []
+        #     for coord in coordinates:
+        #         x, y = map(float, coord.split())
+        #         path_points.append(f"{x},{y_median-(y-y_median)}")
+        #     path_string = "M" + "L".join(path_points) + "Z"  # Add "M" at the beginning and "Z" at the end
+            
+        #     return path_string
+
+        fig, ax = plt.subplots()
+        ax.imshow(padded_metal_image_rgb, cmap=plt.cm.jet)
+        for contour in contours:
+            ax.plot(contour[:, 1], contour[:, 0], linewidth=2, color="blue")
+
+        ax.axis('image')
+        ax.set_axis_off()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        plt.margins(0,0)
+        plt.savefig('mask_contour.jpg', dpi = 1200, bbox_inches='tight')
+        plt.close()
+        # plt.show()
+
+        contour_image = cv2.imread('mask_contour.jpg')
+
+        
+        # def contour_to_polygon(contour):
+        #     final_polygon = 'POLYGON (('
+        #     for one_point in contour:
+        #         final_polygon += str(one_point[0])
+        #         final_polygon += ' '
+        #         final_polygon += str(one_point[1])
+        #         final_polygon += ', '
+        #     final_polygon = final_polygon[:-2]
+        #     final_polygon += '))'
+        #     return final_polygon
+
+        # # mask_polygon = contour_to_polygon(contour)
+        # # print(contours)
+        # # print(contour_to_polygon(contours))
+        # # print(metal_data['metals'][list(metal_data['metals'].keys())[0]].shape[0]*0.5*scale_factor)
+        # mask_path = polygon_to_path(contour_to_polygon(contours[0]), metal_data['metals'][list(metal_data['metals'].keys())[0]].shape[0]*0.5*scale_factor)
+        # print(mask_path)
 
         blank_figure_mask = go.Figure()
 
-        blank_figure_mask_width = rgb_array.shape[1]
-        blank_figure_mask_height = rgb_array.shape[0]
-        scale_factor = 0.25
+        # blank_figure_mask_width = metal_data['metals'][list(metal_data['metals'].keys())[0]].shape[1]
+        # blank_figure_mask_height = metal_data['metals'][list(metal_data['metals'].keys())[0]].shape[0]
+
+        blank_figure_mask_width = contour_image.shape[1]
+        blank_figure_mask_height = contour_image.shape[0]
+        scale_factor = (metal_data['metals'][list(metal_data['metals'].keys())[0]].shape[1]/contour_image.shape[1])*0.32
 
         blank_figure_mask.add_trace(
             go.Scatter(
@@ -1114,13 +1208,29 @@ def generate_tissue_mask(n_clicks):
                 opacity=1.0,
                 layer="below",
                 sizing="stretch",
-                source=array_to_data_url(rgb_array))
+                source=array_to_data_url(contour_image),)
         )
         blank_figure_mask.update_layout(
             width=blank_figure_mask_width * scale_factor,
             height=blank_figure_mask_height * scale_factor,
             margin={"l": 0, "r": 0, "t": 0, "b": 0},
         )
+
+        # append_relayout = {'editable': True, 
+        #                        'fillcolor': 'rgba(0, 0, 0, 0)', 
+        #                        'fillrule': 'evenodd', 
+        #                        'layer': 'above', 
+        #                        'line': {'color': all_color_list[1], 'dash': 'solid', 'width': 2}, 
+        #                        'opacity': 1, 'type': 'path', 
+        #                        'xref': 'x', 'yref': 'y', 
+        #                        'path': mask_path}
+        # all_relayout_data = {'shapes': [append_relayout], 
+        #                     #  'dragmode': 'drawclosedpath',
+        #                      }
+        # #     if append_relayout not in all_relayout_data['shapes']:
+        # #         all_relayout_data['shapes'].append(append_relayout)
+        # # all_relayout_data['dragmode'] = 'drawclosedpath'
+        # blank_figure_mask['layout'].update(all_relayout_data)
         return blank_figure_mask
     else:
         raise PreventUpdate
@@ -1128,6 +1238,7 @@ def generate_tissue_mask(n_clicks):
 
 @app.callback(
     Output('metal_pre', 'figure'),
+    Output('metal_pre_mask', 'figure'),
     Input('metal_colormap_pre', 'value'),
     Input('metal_dropdown_pre', 'value'),
     Input('vmin_vmax_input_pre', 'value'),
@@ -1135,7 +1246,18 @@ def generate_tissue_mask(n_clicks):
 def update_pre_metals(colormap, selected_metal, vmin_vmax):
     vmin, vmax = vmin_vmax[0], vmin_vmax[1]
 
-    original_metal_image = metal_data['metals'][selected_metal]
+    if selected_metal == 'All':
+        append_count = 0
+        for i_index in list(metal_data['metals'].keys()):
+            i = metal_data['metals'][i_index]
+            if append_count == 0:
+                all_metals = i
+                continue
+            all_metals += i
+            append_count += 1
+        original_metal_image = all_metals
+    else:
+        original_metal_image = metal_data['metals'][selected_metal]
     padded_metal_image = original_metal_image
     padded_metal_image[padded_metal_image <= 0] = 0.000001
     padded_metal_image = np.nan_to_num(padded_metal_image, nan=0.000001)
@@ -1194,7 +1316,7 @@ def update_pre_metals(colormap, selected_metal, vmin_vmax):
         height=blank_img_height * scale_factor,
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
     )
-    return blank_figure
+    return blank_figure, blank_figure
 
 @app.callback(
     Output('upload_data_folder_dropdown', 'options'),
@@ -1211,6 +1333,75 @@ def make_new_folder(n_clicks, new_folder_input, upload_data_folder_dropdown):
                 upload_data_folder_dropdown.append(new_folder_input)
     return upload_data_folder_dropdown
     
+
+@app.callback(
+    Output('files_table', 'data', allow_duplicate=True),
+    Input('upload_multiple_xlsx_files', 'contents'),
+    State('upload_data_folder_dropdown', 'value'),
+    State('upload_multiple_xlsx_files', 'filename'),
+    State('upload_multiple_xlsx_files', 'last_modified'),
+    prevent_initial_call=True,
+)
+
+def upload_file(list_of_contents, upload_data_folder_dropdown, list_of_names, list_of_dates):
+    temp_metal_dict = {}
+
+    if list_of_contents is not None:
+        print(len(list_of_contents))
+        print(len(list_of_names))
+        print(len(list_of_dates))
+        # print(list_of_contents)
+        # print(list_of_names)
+        # print(list_of_dates)
+        for contents, filename, last_modified in zip(list_of_contents, list_of_names, list_of_dates):
+            content_type, content_string = contents.split(',')
+            decoded = base64.b64decode(content_string)
+
+            df = pd.read_excel(io.BytesIO(decoded))
+
+            split_string = filename.split()
+            if 'ppm' in split_string[1]:
+                metal_name = split_string[1][:-4]
+            else:
+                metal_name = split_string[1]
+
+            temp_metal_dict[metal_name] = np.array(df)
+    with open('./data/'+str(upload_data_folder_dropdown)+'/'+str(upload_data_folder_dropdown)+'_metals.pkl', 'wb') as handle:
+        pickle.dump(temp_metal_dict, handle)
+
+    project_df_list, file_name_df_list, file_type_list = [], [], []
+    all_files_list_first = os.listdir('./data/')
+    all_files_list = []
+    for one_file in all_files_list_first:
+        if one_file == '.DS_Store':
+            continue
+        else:
+            all_files_list.append(one_file)
+    for one_file in all_files_list:
+        data_files_under_list = os.listdir('./data/'+one_file)
+        for one_data in data_files_under_list:
+            if one_data == '.DS_Store':
+                continue
+            if '.svs' in one_data:
+                file_type_list.append('H&E')
+            elif '.tiff' in one_data:
+                file_type_list.append('H&E')
+            elif 'pkl' in one_data:
+                file_type_list.append('Metals')
+            else:
+                file_type_list.append('Annotations')
+            project_df_list.append(one_file)
+            file_name_df_list.append(one_data)
+
+
+    files_df = pd.DataFrame({'Project': project_df_list, 
+                             'File Name': file_name_df_list, 
+                             'File Type': file_type_list,})
+    
+    return files_df.to_dict('records')
+
+    
+
     
     
 @app.callback(
@@ -1473,7 +1664,79 @@ def change_two_images_and_clean_point_table(selected_rows,
         blank_hne_image = output_blank_hne(im_small_crop_annotation_tab)
 
 
-        return [], white_fig_co, xy_coords_table, list(metal_data['metals'].keys()), list(metal_data['metals'].keys())[0], blank_figure, blank_hne_image, selected_metal, all_metals_list, colormap, vmin_vmax, selected_metal, all_metals_list, colormap, vmin_vmax, selected_metal, all_metals_list, colormap, vmin_vmax, blank_figure, blank_figure
+
+        vmin, vmax = vmin_vmax[0], vmin_vmax[1]
+
+        append_count = 0
+        for i_index in list(metal_data['metals'].keys()):
+            i = metal_data['metals'][i_index]
+            if append_count == 0:
+                all_metals = i
+                continue
+            all_metals += i
+            append_count += 1
+
+        # original_metal_image = all_metals
+        padded_metal_image = all_metals
+        padded_metal_image[padded_metal_image <= 0] = 0.000001
+        padded_metal_image = np.nan_to_num(padded_metal_image, nan=0.000001)
+        padded_metal_image = np.log(padded_metal_image)+10
+        if vmin and vmax:
+            c_norm = Colors_Normalize(vmin=np.percentile(padded_metal_image, vmin), 
+                                    vmax=np.percentile(padded_metal_image, vmax), clip=True)
+            padded_metal_image_normalized = c_norm(padded_metal_image)
+        else:
+            padded_metal_image_normalized = (padded_metal_image - padded_metal_image.min()) / (padded_metal_image.max() - padded_metal_image.min())
+        cmap_jet = plt.cm.get_cmap(colormap)
+        padded_metal_image_rgb = cmap_jet(padded_metal_image_normalized)
+        padded_metal_image_rgb = padded_metal_image_rgb[:, :, :3]
+        target_color_to_white = padded_metal_image_rgb[0, 0, :]
+        replacement_color_to_white = np.array([1, 1, 1])
+        mask_to_white = np.all(padded_metal_image_rgb == target_color_to_white, axis=-1)
+        padded_metal_image_rgb[mask_to_white] = replacement_color_to_white
+        blank_figure_pre = go.Figure()
+
+        blank_img_width = original_metal_image.shape[1]
+        blank_img_height = original_metal_image.shape[0]
+        scale_factor = 0.3
+
+        blank_figure_pre.add_trace(
+            go.Scatter(
+                x=[0, blank_img_width * scale_factor],
+                y=[0, blank_img_height * scale_factor],
+                mode="markers",
+                marker_opacity=0
+            )
+        )
+        blank_figure_pre.update_xaxes(
+            visible=False,
+            range=[0, blank_img_width * scale_factor]
+        )
+        blank_figure_pre.update_yaxes(
+            visible=False,
+            range=[0, blank_img_height * scale_factor],
+            scaleanchor="x",
+        )
+        blank_figure_pre.add_layout_image(
+            dict(
+                x=0,
+                sizex=blank_img_width * scale_factor,
+                y=blank_img_height * scale_factor,
+                sizey=blank_img_height * scale_factor,
+                xref="x",
+                yref="y",
+                opacity=1.0,
+                layer="below",
+                sizing="stretch",
+                source=array_to_data_url((padded_metal_image_rgb * 255).astype(np.uint8)),)
+        )
+        blank_figure_pre.update_layout(
+            width=blank_img_width * scale_factor,
+            height=blank_img_height * scale_factor,
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        )
+
+        return [], white_fig_co, xy_coords_table, list(metal_data['metals'].keys()), list(metal_data['metals'].keys())[0], blank_figure, blank_hne_image, selected_metal, all_metals_list, colormap, vmin_vmax, selected_metal, all_metals_list, colormap, vmin_vmax, 'All', ['All']+all_metals_list, colormap, vmin_vmax, blank_figure_pre, blank_figure_pre
 
 @app.callback(
     Output('type_dropdown_annotation', 'options'),
@@ -1800,25 +2063,42 @@ def update_annotation_callback(selected_metal,
         return blank_figure, blank_hne_image
 
 @app.callback(
+    Output('boxplot_dropdown', 'value'), 
+    Output('boxplot_dropdown', 'options'), 
+    Input('boxplot_metal_type', 'checked'),
+    State('type_dropdown_annotation', 'options'),
+)
+
+def update_boxplot_dropdown(boxplot_metal_type, type_dropdown_annotation):
+    if boxplot_metal_type:
+        #type
+        return type_dropdown_annotation[0], type_dropdown_annotation
+    else:
+        #metal
+        return list(metal_data['metals'].keys())[0], list(metal_data['metals'].keys())
+
+
+@app.callback(
     Output('table_container', 'children'),
     Output("result_boxplot", "figure"), 
     Input('update_table_button', 'n_clicks'),
     Input('boxplot_dropdown', 'value'), 
     Input('boxplot_log_scale', 'checked'),
+    Input('boxplot_metal_type', 'checked'),
     State('annotate_metal_image', 'relayoutData'),
     State('table_container', 'children'),
 )
 
-def update_table_callback(n_clicks, boxplot_dropdown, boxplot_log_scale, relayout_data, table_children):
+def update_table_callback(n_clicks, boxplot_dropdown, boxplot_log_scale, boxplot_metal_type, relayout_data, table_children):
     if n_clicks is None:
         return table_children, px.box()
     
     if n_clicks == 0:
         return table_children, px.box()
 
-    padded_rows = 1000
-    padded_columns = 1600
-    scale_factor = 0.3
+    # padded_rows = 1000
+    # padded_columns = 1600
+    # scale_factor = 0.3
     
     all_type_list = []
     for one_shape in all_relayout_data['shapes']:
@@ -1897,8 +2177,14 @@ def update_table_callback(n_clicks, boxplot_dropdown, boxplot_log_scale, relayou
                                 fixed_rows={'headers': True},
                                 style_table={'height': 400, 'overflowY': 'auto'}  # defaults to 500
                             )
-    box_df_test = box_df[box_df['metal'] == boxplot_dropdown]
-    boxplot_fig = px.box(box_df_test, x='type', y='value')
+    if boxplot_metal_type:
+        #type
+        box_df_test = box_df[box_df['type'] == boxplot_dropdown]
+        boxplot_fig = px.box(box_df_test, x='metal', y='value')
+    else:
+        #metal
+        box_df_test = box_df[box_df['metal'] == boxplot_dropdown]
+        boxplot_fig = px.box(box_df_test, x='type', y='value')
     return annotation_result_table, boxplot_fig
 
 @app.callback(
@@ -2417,3 +2703,20 @@ def show_coregistered_images(n_clicks, table_data, selected_rows):
 
 
 app.run(jupyter_mode="external")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
